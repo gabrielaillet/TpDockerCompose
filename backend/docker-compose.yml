@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:3000" 
+    environment:
+      NODE_ENV: production # Set environment variable if needed
+    command: ["fastify", "start", "-l", "info", "dist/app.js"] # Override CMD if needed
+    volumes:
+      - .:/app # Optional: Mounts the current directory to the app directory in the container
+      - /app/node_modules # Ensures node_modules in container doesn't conflict with host
