@@ -1,56 +1,134 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { ITodoList ,Status} from "../interfaces";
+import { ITodoList, IItem } from "../interfaces";
 
+// Add a new list
 export const addList = async (
-  request: FastifyRequest<{
-    Params: { id: string };  // To access list id from the URL
-    Body: { id: string; name?: string, description?:string };  
-  }>,
+  request: FastifyRequest<{ Body: ITodoList }>,
   reply: FastifyReply
-) => {  
-  const list = request.body as ITodoList;
-  const result = await request.server.level.db.put(
-    list.id.toString(),
-    JSON.stringify(list)
-  );
-  reply.send({ data: list });
-}
+) => {
+  const list = request.body;
+  console.log(`Adding new list: ${JSON.stringify(list)}`); // Debugging log
 
+  try {
+    await request.server.level.db.put(list.id, JSON.stringify(list));
+    reply.send(list);
+  } catch (err) {
+    console.error(`Error adding list: ${JSON.stringify(list)}`, err); // Debugging log
+    reply.status(500).send({ error: "Internal Server Error" });
+  }
+};
+
+// Update an existing list
 export const changeList = async (
+  request: FastifyRequest<{ Params: { id: string }; Body: Partial<ITodoList> }>,
+  reply: FastifyReply
+) => {
+  const { id } = request.params;
+  const { name, description } = request.body;
+  console.log(`Updating list with ID: ${id}`); // Debugging log
+
+  try {
+    const value = await request.server.level.db.get(id);
+    const list = JSON.parse(value) as ITodoList;
+
+    if (name) list.name = name;
+    if (description) list.description = description;
+
+    await request.server.level.db.put(id, JSON.stringify(list));
+    reply.send(list);
+  } catch (err) {
+    console.error(`Error updating list with ID: ${id}`, err); // Debugging log
+    reply.status(404).send({ error: "List not found" });
+  }
+};
+
+// Add an item to a specific list
+export const addListItem = async (
+  request: FastifyRequest<{ Params: { id: string }; Body: IItem }>,
+  reply: FastifyReply
+) => {
+  const { id } = request.params;
+  const item = request.body;
+  console.log(`Adding item to list with ID: ${id}`); // Debugging log
+
+  try {
+    const value = await request.server.level.db.get(id);
+    const list = JSON.parse(value) as ITodoList;
+
+    if (!list.items) list.items = [];
+    list.items.push(item);
+
+    await request.server.level.db.put(id, JSON.stringify(list));
+    reply.send(item);
+  } catch (err) {
+    console.error(`Error adding item to list with ID: ${id}`, err); // Debugging log
+    reply.status(404).send({ error: "List not found" });
+  }
+};
+
+// Update an item in a specific list
+export const putListItem = async (
   request: FastifyRequest<{
-    Params: { id: string };
-    Body: { description?: string; name?: string };
+    Params: { id: string; idItem: string };
+    Body: Partial<IItem>;
   }>,
   reply: FastifyReply
 ) => {
-  const { name, description } = request.body;
-  const { id } = request.params;
-  const listsIter = request.server.level.db.iterator();
-  const result: ITodoList[] = [];
+  const { id, idItem } = request.params;
+  const { name, status } = request.body;
+  console.log(`Updating item with ID: ${idItem} in list with ID: ${id}`); // Debugging log
 
-  // We'll need to use this to check and modify the data
-  let listUpdated = false;
+  try {
+    const value = await request.server.level.db.get(id);
+    const list = JSON.parse(value) as ITodoList;
 
-  for await (const [key, value] of listsIter) {
-    const currentList: ITodoList = JSON.parse(value); // Deserialize the current item
-    // Check if the current list matches the requested `id`
-    if (currentList.id === id) {
-      // Modify the fields if provided in the request body
-      if (name) currentList.name = name;
-      if (description) currentList.description = description;
-
-      // Save the updated list back to the database
-      await request.server.level.db.put(id, JSON.stringify(currentList));
-
-      listUpdated = true;
+    const item = list.items?.find((item) => item.id === idItem);
+    if (!item) {
+      reply.status(404).send({ error: "Item not found" });
+      return;
     }
-    result.push(currentList);
-  }
-  if (!listUpdated) {
+
+    if (name) item.name = name;
+    if (status) item.status = status;
+
+    await request.server.level.db.put(id, JSON.stringify(list));
+    reply.send(item);
+  } catch (err) {
+    console.error(
+      `Error updating item with ID: ${idItem} in list with ID: ${id}`,
+      err
+    ); // Debugging log
     reply.status(404).send({ error: "List not found" });
-  } else {
-    // Return the updated list after modification
-    reply.send({ data: result });
+  }
+};
+
+// Delete an item from a specific list
+export const delListItem = async (
+  request: FastifyRequest<{ Params: { id: string; idItem: string } }>,
+  reply: FastifyReply
+) => {
+  const { id, idItem } = request.params;
+  console.log(`Deleting item with ID: ${idItem} from list with ID: ${id}`); // Debugging log
+
+  try {
+    const value = await request.server.level.db.get(id);
+    const list = JSON.parse(value) as ITodoList;
+
+    const itemIndex = list.items?.findIndex((item) => item.id === idItem);
+    if (itemIndex === undefined || itemIndex === -1) {
+      reply.status(404).send({ error: "Item not found" });
+      return;
+    }
+
+    list.items?.splice(itemIndex, 1);
+    await request.server.level.db.put(id, JSON.stringify(list));
+    reply.send({ id, idItem });
+  } catch (err) {
+    console.error(
+      `Error deleting item with ID: ${idItem} from list with ID: ${id}`,
+      err
+    ); // Debugging log
+    reply.status(404).send({ error: "List not found" });
   }
 };
 
@@ -65,141 +143,29 @@ export async function listLists(request: FastifyRequest, reply: FastifyReply) {
   reply.send({ data: result });
 }
 
-export const addListItem = async (
-  request: FastifyRequest<{
-    Params: { id: string };  // To access list id from the URL
-    Body: { idItem: string; name: string };  // To access item details from the body
-  }>,
+export const getTodoListItems = async (
+  request: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply
 ) => {
-  const { idItem, name } = request.body;
   const { id } = request.params;
-  // Use an iterator to go through all lists in the database
-  const listsIter = request.server.level.db.iterator();
+  console.log(`Fetching items for list with ID: ${id}`); // Debugging log
 
-  let listFound = false;
-  // Loop through each list in the database
-  for await (const [key, value] of listsIter) {
-    const currentList: ITodoList = JSON.parse(value); // Deserialize the current list
-    // If the list ID matches, update the list
-    if (currentList.id === id) {
-      // Initialize items if undefined and then add the new item
-      if (!currentList.items) {
-        currentList.items = [];
-      }
-      currentList.items.push({ name, id:idItem, status: "PENDING" });
+  try {
+    const value = await request.server.level.db.get(id);
+    console.log(`Retrieved value from DB: ${value}`); // Debugging log
 
-      // Save the updated list back to the database
-      await request.server.level.db.put(currentList.id, JSON.stringify(currentList));
+    const list = JSON.parse(value) as ITodoList;
+    console.log(`Parsed list: ${JSON.stringify(list)}`); // Debugging log
 
-      listFound = true;
-      break; // Exit loop once the list has been updated
+    if (list.items) {
+      console.log(`List items found: ${JSON.stringify(list.items)}`); // Debugging log
+      reply.send({ data: list.items });
+    } else {
+      console.log(`No items found for list with ID: ${id}`); // Debugging log
+      reply.send({ data: [] });
     }
-  }
-
-  if (!listFound) {
-    // If no list with the given id is found, send a 404 error
+  } catch (err) {
+    console.error(`Error fetching list with ID: ${id}`, err); // Debugging log
     reply.status(404).send({ error: "List not found" });
-  } else {
-    // Return the updated list with the new item
-    reply.send({ data: { id, idItem, name, status: "PENDING" } });
-  }
-};
-
-
-export const putListItem = async (
-  request: FastifyRequest<{
-    Params: { id: string,idItem:string };  // To access list id from the URL
-    Body: {  name?: string, status:Status };  // To access item details from the body
-  }>,
-  reply: FastifyReply
-) => {
-  const {status , name } = request.body;
-  const { id,idItem } = request.params;
-  // Use an iterator to go through all lists in the database
-  const listsIter = request.server.level.db.iterator();
-
-  let listFound = false;
-  // Loop through each list in the database
-  for await (const [key, value] of listsIter) {
-    const currentList: ITodoList = JSON.parse(value); // Deserialize the current list
-    // If the list ID matches, update the list
-    if (currentList.id === id) {
-      // Initialize items if undefined and then add the new item
-      if(currentList.items){
-        let item = currentList.items.find(e => e.id === idItem)
-        if(item){
-          if(name){
-            item.name = name
-          }
-          if(status){
-            item.status = status
-          }
-        }
-      }
-
-      // Save the updated list back to the database
-      await request.server.level.db.put(currentList.id, JSON.stringify(currentList));
-
-      listFound = true;
-      break; // Exit loop once the list has been updated
-    }
-  }
-
-  if (!listFound) {
-    // If no list with the given id is found, send a 404 error
-    reply.status(404).send({ error: "List not found" });
-  } else {
-    // Return the updated list with the new item
-    reply.send({ data: { id, idItem, name, status: status } });
-  }
-};
-
-export const delListItem = async (
-  request: FastifyRequest<{
-    Params: { id: string,idItem:string };  // To access list id from the URL
-    Body: { };  // To access item details from the body
-  }>,
-  reply: FastifyReply
-) => {
-  const { id,idItem } = request.params;
-  // Use an iterator to go through all lists in the database
-  const listsIter = request.server.level.db.iterator();
-
-  let listFound = false;
-  // Loop through each list in the database
-  for await (const [key, value] of listsIter) {
-    const currentList: ITodoList = JSON.parse(value); // Deserialize the current list
-    // If the list ID matches, update the list
-    if (currentList.id === id) {
-      // Initialize items if undefined and then add the new item
-      if (currentList.items) {
-        // Find the item to be removed by its id
-        const itemIndex = currentList.items.findIndex((e) => e.id === idItem);
-
-        // If the item is found, remove it from the array
-        if (itemIndex !== -1) {
-          currentList.items.splice(itemIndex, 1);  // Remove the item from the array
-        } else {
-          // If item not found, send 404 error for the item
-          reply.status(404).send({ error: "Item not found" });
-          return;
-        }
-      }
-
-      // Save the updated list back to the database
-      await request.server.level.db.put(currentList.id, JSON.stringify(currentList));
-
-      listFound = true;
-      break; // Exit loop once the list has been updated
-    }
-  }
-
-  if (!listFound) {
-    // If no list with the given id is found, send a 404 error
-    reply.status(404).send({ error: "List not found" });
-  } else {
-    // Return the updated list with the new item
-    reply.send({ data: { id, idItem, } });
   }
 };

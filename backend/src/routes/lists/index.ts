@@ -7,14 +7,34 @@ import {
   addListItemSchema,
   putListItemSchema,
   delListItemSchema,
+  getTodoListItemsSchema,
 } from "../../schemas";
+
 async function lists(fastify: FastifyInstance) {
-  fastify.get("/", listsController.listLists);
-  fastify.post("/", listsController.addList);
-  fastify.put("/:id", listsController.changeList);
-  fastify.post("/:id/items", listsController.addListItem);
-  fastify.put("/:id/items/:idItem", listsController.putListItem);
-  fastify.delete("/:id/items/:idItem", listsController.delListItem);
+  fastify.get("/", { schema: listListsSchema }, listsController.listLists);
+  fastify.post("/", { schema: addListSchema }, listsController.addList);
+  fastify.put("/:id", { schema: changeListSchema }, listsController.changeList);
+  fastify.post(
+    "/:id/items",
+    { schema: addListItemSchema },
+    listsController.addListItem
+  );
+  fastify.put(
+    "/:id/items/:idItem",
+    { schema: putListItemSchema },
+    listsController.putListItem
+  );
+  fastify.delete(
+    "/:id/items/:idItem",
+    { schema: delListItemSchema },
+    listsController.delListItem
+  );
+
+  fastify.get(
+    "/:id/items",
+    { schema: getTodoListItemsSchema },
+    listsController.getTodoListItems
+  );
 }
 
 export default lists;

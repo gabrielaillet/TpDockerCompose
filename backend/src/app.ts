@@ -1,8 +1,9 @@
 import { join } from "path";
+import SwaggerUI from "@fastify/swagger-ui";
 import AutoLoad, { AutoloadPluginOptions } from "@fastify/autoload";
 import { FastifyPluginAsync, FastifyServerOptions } from "fastify";
-import SwaggerUI from "@fastify/swagger-ui";
-import cors from "@fastify/cors";
+import lists from "./routes/lists"; // Adjust the path as necessary
+
 export interface AppOptions
   extends FastifyServerOptions,
     Partial<AutoloadPluginOptions> {}
@@ -13,14 +14,8 @@ const app: FastifyPluginAsync<AppOptions> = async (
   fastify,
   opts
 ): Promise<void> => {
-  fastify.register(cors, {
-    origin: "*", // Allow all origins (adjust for production)
-    methods: ["GET", "POST", "PUT", "DELETE"], // Allowed methods
-    allowedHeaders: ["Content-Type", "Authorization"], // Allowed headers
-  });
- 
-  
   // Place here your custom code!
+  fastify.register(lists);
 
   // Do not touch the following lines
 
@@ -38,10 +33,26 @@ const app: FastifyPluginAsync<AppOptions> = async (
     dir: join(__dirname, "routes"),
     options: opts,
   });
-  fastify.register(SwaggerUI, {
+
+  void fastify.register(SwaggerUI, {
     routePrefix: "/api-docs",
   });
 };
 
 export default app;
 export { app, options };
+
+// Start the server
+import fastify from "fastify";
+
+const server = fastify();
+
+server.register(app);
+
+server.listen({ port: 3000 }, (err, address) => {
+  if (err) {
+    console.error(err);
+    process.exit(1);
+  }
+  console.log(`Server listening at ${address}`);
+});
